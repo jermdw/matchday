@@ -42,11 +42,17 @@ In pages mode, turn the knob to step through games.
 
 ### Flags and crests
 
+![A Champions League game with each club's flag](preview-flags.png)
+
 In pages mode, Champions, Europa and Conference League games show each club's national flag above its abbreviation. Other soccer leagues show the two team crests, with the status and score between them. A thin line under the score is drawn in the league's colour.
 
 Crests are downloaded by the clock the first time a team appears; until one arrives, or if it can't be loaded, the abbreviation shows in its place. A score too wide to fit between two crests falls back to the plain text layout. Other sports keep the text layout.
 
 The ticker shows text only.
+
+The 51 flags, drawn on the panel rather than downloaded:
+
+![Every flag Matchday draws](preview-flag-set.png)
 
 ### Reading the display
 
