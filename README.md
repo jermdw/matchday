@@ -40,6 +40,14 @@ Go to the **Apps** tab and click the gear on the Matchday row.
 
 In pages mode, turn the knob to step through games.
 
+### Flags and crests
+
+In pages mode, Champions, Europa and Conference League games show each club's national flag above its abbreviation. Other soccer leagues show the two team crests, with the status and score between them. A thin line under the score is drawn in the league's colour.
+
+Crests are downloaded by the clock the first time a team appears; until one arrives, or if it can't be loaded, the abbreviation shows in its place. A score too wide to fit between two crests falls back to the plain text layout. Other sports keep the text layout.
+
+The ticker shows text only.
+
 ### Reading the display
 
 - **Green:** live, with the match minute
@@ -67,6 +75,8 @@ Other ESPN league paths also work, and show a short tag taken from the path.
 ## How it works
 
 ESPN's league scoreboard runs past 100 KB on a matchday, which is too large to parse on the clock. Matchday instead reads a small list of today's game IDs, then fetches each game on its own (about 13 KB). Measured on a TC002, one game takes about 430 ms to fetch, 8 ms to parse and about 52 KB of temporary memory.
+
+For European games, each club's country is read once from ESPN (about 5 KB, of which the clock keeps 24 bytes) and remembered until the clock restarts. Clubs whose ESPN record names no country are listed in the script. A club with no known country shows no flag.
 
 Requests go out one at a time with a gap of at least 2 seconds, so other apps on the clock still get their turn. Finished games are not re-read. If many games are live at once, the time between updates for each game can exceed the Live refresh setting.
 

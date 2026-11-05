@@ -1,7 +1,7 @@
 # @name    Matchday
 # @desc    Today's scores from every league you follow, as a ticker or pages. Hides itself on days with no games.
 # @author  Jeremy Warren
-# @version 1.0
+# @version 1.1
 # @display 52x16
 # @config  leagues  text   "Leagues"        default="soccer/uefa.champions,soccer/uefa.europa,soccer/uefa.europa.conf,soccer/eng.1,soccer/esp.1,soccer/ger.1,soccer/ita.1,soccer/fra.1" maxlen=256 help="ESPN paths, comma separated. Also soccer/usa.1, football/nfl"
 # @config  mode     select "Display"        default=ticker options=ticker,pages
@@ -22,7 +22,7 @@ import string
 class Matchday
   var leagues, ev, date, every, busy, gap, failAt, dirty, due
   var ticker, opts, pieces, pending, rows, page, pageAt, pageMs
-  var live, done, stale
+  var live, done, stale, flags, nation
 
   def init()
     self.ev = []
@@ -61,9 +61,78 @@ class Matchday
         var dot = string.find(lg, ".")
         n = [string.toupper(dot > 0 ? lg[0 .. dot - 1] : lg), 0xC0C0C0]
       end
-      # sport, league, tag, colour, next list read, away team first
-      self.leagues.push([sport, lg, n[0], n[1], 0, sport != "soccer"])
+      # sport, league, tag, colour, next list read, away team first, European cup
+      self.leagues.push([sport, lg, n[0], n[1], 0, sport != "soccer", string.find(lg, "uefa.") == 0])
     end
+    # 9x6 flags, keyed by the country prefix ESPN puts on a club's slug
+    # ("esp.real_madrid"). Kinds: v/h three bands, v2/h2 two, s Spain-style
+    # 1:4:1, t two bands and a hoist triangle, n Nordic cross (third colour
+    # the inner cross, -1 none), + centred cross, x saltire, g Greece, e
+    # plain field with a centre mark, c crescent. An optional last colour
+    # is a small emblem. Black is a dim grey, since an unlit LED is black.
+    self.flags = {
+      "alb": ["e", 0xE41E20, 0x303030], "and": ["v", 0x1040C8, 0xFFD700, 0xD0103A], "arm": ["h", 0xD90012, 0x0040C0, 0xF2A800],
+      "aut": ["h", 0xED2939, 0xFFFFFF, 0xED2939], "aze": ["h", 0x00A0E0, 0xEF3340, 0x50B848], "bel": ["v", 0x303030, 0xFDDA24, 0xEF3340],
+      "bih": ["e", 0x0038C0, 0xFECB00], "bul": ["h", 0xFFFFFF, 0x00966E, 0xD62612], "cro": ["h", 0xFF0000, 0xFFFFFF, 0x1040C8, 0xFF0000],
+      "cyp": ["e", 0xFFFFFF, 0xD57800], "cze": ["t", 0xFFFFFF, 0xD7141A, 0x1060D0], "den": ["n", 0xC8102E, 0xFFFFFF, -1],
+      "eng": ["+", 0xFFFFFF, 0xCE1124], "esp": ["s", 0xC60B1E, 0xFFC400], "est": ["h", 0x0072CE, 0x303030, 0xFFFFFF],
+      "fin": ["n", 0xFFFFFF, 0x1050C0, -1], "fra": ["v", 0x1050C0, 0xFFFFFF, 0xEF4135], "geo": ["+", 0xFFFFFF, 0xFF0000],
+      "ger": ["h", 0x303030, 0xDD0000, 0xFFCE00], "gib": ["h2", 0xFFFFFF, 0xDA000C, 0xDA000C], "gre": ["g", 0x0D5EAF, 0xFFFFFF],
+      "hun": ["h", 0xCD2A3E, 0xFFFFFF, 0x436F4D], "irl": ["v", 0x169B62, 0xFFFFFF, 0xFF883E], "isl": ["n", 0x1050C0, 0xFFFFFF, 0xDC1E35],
+      "isr": ["h", 0xFFFFFF, 0x0038B8, 0xFFFFFF], "ita": ["v", 0x009246, 0xFFFFFF, 0xCE2B37], "kaz": ["e", 0x00AFCA, 0xFEC50C],
+      "kos": ["e", 0x244AA5, 0xD0A650], "lva": ["h", 0x9E3039, 0xFFFFFF, 0x9E3039], "ltu": ["h", 0xFDB913, 0x006A44, 0xC1272D],
+      "lux": ["h", 0xEF3340, 0xFFFFFF, 0x00A3E0], "mda": ["v", 0x0046AE, 0xFFD200, 0xCC092F], "mkd": ["e", 0xD20000, 0xFFE600],
+      "mlt": ["v2", 0xFFFFFF, 0xCF142B], "mne": ["e", 0xC40308, 0xD3AE3B], "ned": ["h", 0xAE1C28, 0xFFFFFF, 0x21468B],
+      "nir": ["+", 0xFFFFFF, 0xCE1124], "nor": ["n", 0xBA0C2F, 0xFFFFFF, 0x1040A0], "pol": ["h2", 0xFFFFFF, 0xDC143C],
+      "por": ["v2", 0x046A38, 0xDA291C, 0xFFE900], "rou": ["v", 0x1040C0, 0xFCD116, 0xCE1126], "rus": ["h", 0xFFFFFF, 0x1050C0, 0xD52B1E],
+      "sco": ["x", 0x0065BD, 0xFFFFFF], "srb": ["h", 0xC6363C, 0x1050A0, 0xFFFFFF, 0xC6363C], "sui": ["e", 0xDA291C, 0xFFFFFF],
+      "svk": ["h", 0xFFFFFF, 0x1050C0, 0xEE1C25, 0xEE1C25], "svn": ["h", 0xFFFFFF, 0x1050C0, 0xED1C24, 0x1050C0],
+      "swe": ["n", 0x1060B0, 0xFECC02, -1], "tur": ["c", 0xE30A17, 0xFFFFFF], "ukr": ["h2", 0x1060D0, 0xFFD500],
+      "wal": ["h2", 0xFFFFFF, 0x00AB39, 0xD30731]
+    }
+    # Club id to country, for clubs whose ESPN slug has no country prefix
+    # ("team.sk_brann", "sabah_fk"). The rest are looked up once each.
+    self.nation = {
+      "2980": "nor", "510": "nor", "987": "nor", "620": "nor", "21922": "aze", "494": "cze", "7922": "cze",
+      "20024": "arm", "622": "hun", "11505": "pol", "3362": "svn", "617": "cyp", "22281": "cyp", "21615": "por",
+      "5807": "bel", "20710": "bih", "10834": "bul", "8089": "rou", "21943": "alb", "7672": "sui", "20025": "geo",
+      "20703": "and", "2528": "kaz", "20028": "ltu", "8169": "fin", "17856": "gib", "20301": "swe", "2290": "srb",
+      "19246": "lva"
+    }
+  end
+
+  # A team's ESPN id, kept only if it is all digits since it goes into a URL.
+  def team_id(t)
+    var id = str(t.find("id", ""))
+    var m = re.match("\\d+", id)
+    return (m != nil && m[0] == id) ? id : ""
+  end
+
+  # The crest as a 16x16 PNG from ESPN's resizer, in the variant drawn for
+  # dark backgrounds: Juventus' black J vanishes on an LED otherwise.
+  def logo_url(t)
+    var u = t.find("logo", "")
+    var h = "https://a.espncdn.com"
+    var m = re.match("https://a\\.espncdn\\.com/i/teamlogos/[a-z0-9/_-]+\\.png", u)
+    if m == nil || m[0] != u return "" end
+    var p = u[size(h) .. size(u) - 1]
+    var i = string.find(p, "/500/")
+    if i > 0 p = p[0 .. i] + "500-dark/" + p[i + 5 .. size(p) - 1] end
+    # The image path goes last so the address ends in ".png".
+    return h + "/combiner/i?w=16&h=16&img=" + p
+  end
+
+  def on_nation(id, b, st)
+    self.busy = false
+    self.gap = epoch_ms() / 1000 + 2
+    var c = ""
+    if b != nil
+      var m = re.match("\"slug\":\"([a-z]+)\\.", b)
+      if m != nil && self.flags.find(m[1]) != nil c = m[1] end
+    end
+    # A failed lookup is not retried: the abbreviation alone still reads fine.
+    self.nation[id] = c
+    if c != "" self.dirty = true end
   end
 
   def on_list(l, b, st)
@@ -83,8 +152,9 @@ class Matchday
       for e : self.ev
         if e[0] == id seen = true break end
       end
-      # id, league, first, second, score 1, score 2, state, status, kickoff, read at, postponed
-      if !seen self.ev.push([id, l, "", "", "", "", "", "", 0, 0, false]) end
+      # id, league, first, second, score 1, score 2, state, status, kickoff, read at, postponed,
+      # first team id, second team id, first crest, second crest
+      if !seen self.ev.push([id, l, "", "", "", "", "", "", 0, 0, false, "", "", "", ""]) end
     end
   end
 
@@ -136,8 +206,19 @@ class Matchday
           label = string.format("%d:%02d", hh, mm)
         end
       end
-      var fa = first.find("team").find("abbreviation")
-      var sa = second.find("team").find("abbreviation")
+      var ft = first.find("team")
+      var stm = second.find("team")
+      var fa = ft.find("abbreviation")
+      var sa = stm.find("abbreviation")
+      if e[11] == ""
+        e[11] = self.team_id(ft)
+        e[12] = self.team_id(stm)
+        # European cups show flags; other soccer leagues show crests.
+        if !e[1][6] && e[1][0] == "soccer"
+          e[13] = self.logo_url(ft)
+          e[14] = self.logo_url(stm)
+        end
+      end
       var fs = first.find("score", "0")
       var ss = second.find("score", "0")
       if e[6] != state || e[7] != label || e[4] != fs || e[5] != ss self.dirty = true end
@@ -182,7 +263,13 @@ class Matchday
         var mid = (kind == "pre" || e[10]) ? "v" : e[4] + "-" + e[5]
         var col = kind == "in" ? 0x00E676 : (kind == "pre" ? 0xFFFFFF : 0xB0B0B0)
         var sc = kind == "in" ? 0x00E676 : (kind == "pre" ? 0xFFC107 : 0x808080)
-        rows.push([e[1][2], e[1][3], e[7], sc, e[2] + " " + mid + " " + e[3], col])
+        var eu = e[1][6]
+        var f1 = eu ? self.flags.find(self.nation.find(e[11], "")) : nil
+        var f2 = eu ? self.flags.find(self.nation.find(e[12], "")) : nil
+        # tag, colour, status, colour, line, colour, first, second, score,
+        # first flag, second flag, first crest, second crest, European cup, line up to the second team
+        rows.push([e[1][2], e[1][3], e[7], sc, e[2] + " " + mid + " " + e[3], col,
+                   e[2], e[3], mid, f1, f2, e[13], e[14], eu, e[2] + " " + mid + " "])
       end
     end
     self.rows = rows
@@ -252,6 +339,21 @@ class Matchday
       self.busy = true
       http.get("https://site.api.espn.com/apis/site/v2/sports/" + e[1][0] + "/" + e[1][1] + "/scoreboard/" + e[0],
                / b, st -> self.on_game(e, b, st), {'cap': 48000})
+      return
+    end
+    # Countries for European games, once per club, only when no game is due.
+    for e : self.ev
+      if e[1][6]
+        for id : [e[11], e[12]]
+          if id != "" && self.nation.find(id) == nil
+            self.nation[id] = ""
+            self.busy = true
+            http.get("https://sports.core.api.espn.com/v2/sports/soccer/leagues/" + e[1][1] + "/teams/" + id,
+                     / b, st -> self.on_nation(id, b, st), {'find': "\"slug\":\"", 'keep': 24})
+            return
+          end
+        end
+      end
     end
   end
 
@@ -315,11 +417,142 @@ class Matchday
       self.pageAt = now_ms()
     end
     var p = self.rows[self.page]
+    var sc = self.stale ? 0xFF5252 : p[3]
+    if p[13]
+      self.draw_flags(p, sc)
+      return
+    end
+    if p[11] != "" && self.draw_crests(p, sc) return end
+    font("small")
     text(0, 6, p[0], p[1])
-    text(width() - text_ink_width(p[2]), 6, p[2], self.stale ? 0xFF5252 : p[3])
+    text(width() - text_ink_width(p[2]), 6, p[2], sc)
     font("large")
     if text_ink_width(p[4]) > width() font("small") end
     text((width() - text_ink_width(p[4])) / 2, 14, p[4], p[5])
+  end
+
+  # European game: each club's flag above its abbreviation, status between.
+  def draw_flags(p, sc)
+    var w = width()
+    font("large")
+    if text_ink_width(p[4]) > w font("small") end
+    var x = (w - text_ink_width(p[4])) / 2
+    text(x, 14, p[4], p[5])
+    var a = x + text_ink_width(p[6]) / 2 - 4
+    var b = x + text_width(p[14]) + text_ink_width(p[7]) / 2 - 4
+    font("small")
+    # Over each abbreviation, but pushed outward to clear the status.
+    var tw = text_ink_width(p[2])
+    var sx = (w - tw) / 2
+    if a > sx - 11 a = sx - 11 end
+    if b < sx + tw + 2 b = sx + tw + 2 end
+    self.flag(p[9], a < 0 ? 0 : a, 1)
+    self.flag(p[10], b > w - 9 ? w - 9 : b, 1)
+    text(sx, 6, p[2], sc)
+    rect_fill(w / 2 - 8, 15, 16, 1, p[1])
+  end
+
+  # Domestic game: crests at both ends, status over the score in the
+  # 20 columns between. False when the score is too wide for that.
+  def draw_crests(p, sc)
+    var w = width()
+    font("large")
+    var sw = text_ink_width(p[8])
+    if sw > 20
+      font("small")
+      sw = text_ink_width(p[8])
+      if sw > 20 return false end
+    end
+    text(16 + (20 - sw) / 2, 14, p[8], p[5])
+    font("small")
+    self.badge(p[11], p[6], 0, p[5])
+    self.badge(p[12], p[7], w - 16, p[5])
+    # A long status ("90'+4'") runs over the crests on a black backing.
+    var tw = text_ink_width(p[2])
+    var x = (w - tw) / 2
+    if tw > 18 rect_fill(x - 1, 0, tw + 2, 7, 0x000000) end
+    text(x, 6, p[2], sc)
+    rect_fill(w / 2 - 8, 15, 16, 1, p[1])
+    return true
+  end
+
+  # The crest, or the abbreviation until it has downloaded or if it can't.
+  def badge(u, ab, x, col)
+    if !icon(u, x, 0)
+      text(x + (16 - text_ink_width(ab)) / 2, 10, ab, col)
+    end
+  end
+
+  def flag(f, x, y)
+    if f == nil return end
+    var k = f[0]
+    var a = f[1]
+    var b = f[2]
+    var n = 3
+    if k == "v"
+      rect_fill(x, y, 3, 6, a)
+      rect_fill(x + 3, y, 3, 6, b)
+      rect_fill(x + 6, y, 3, 6, f[3])
+      n = 4
+    elif k == "h"
+      rect_fill(x, y, 9, 2, a)
+      rect_fill(x, y + 2, 9, 2, b)
+      rect_fill(x, y + 4, 9, 2, f[3])
+      n = 4
+    elif k == "v2"
+      rect_fill(x, y, 4, 6, a)
+      rect_fill(x + 4, y, 5, 6, b)
+    elif k == "h2" || k == "t"
+      rect_fill(x, y, 9, 3, a)
+      rect_fill(x, y + 3, 9, 3, b)
+      if k == "t"
+        rect_fill(x, y, 1, 6, f[3])
+        rect_fill(x + 1, y + 1, 1, 4, f[3])
+        rect_fill(x + 2, y + 2, 1, 2, f[3])
+        n = 4
+      end
+    elif k == "s"
+      rect_fill(x, y, 9, 6, a)
+      rect_fill(x, y + 1, 9, 4, b)
+    elif k == "n"
+      rect_fill(x, y, 9, 6, a)
+      if f[3] >= 0
+        rect_fill(x + 2, y, 4, 6, b)
+        rect_fill(x, y + 1, 9, 4, b)
+        rect_fill(x + 3, y, 2, 6, f[3])
+        rect_fill(x, y + 2, 9, 2, f[3])
+      else
+        rect_fill(x + 2, y, 2, 6, b)
+        rect_fill(x, y + 2, 9, 2, b)
+      end
+      n = 4
+    elif k == "+"
+      rect_fill(x, y, 9, 6, a)
+      rect_fill(x + 4, y, 1, 6, b)
+      rect_fill(x, y + 2, 9, 2, b)
+    elif k == "x"
+      rect_fill(x, y, 9, 6, a)
+      line(x, y, x + 8, y + 5, b)
+      line(x, y + 5, x + 8, y, b)
+    elif k == "g"
+      for i : 0 .. 5 rect_fill(x, y + i, 9, 1, i % 2 ? b : a) end
+      rect_fill(x, y, 4, 3, a)
+      rect_fill(x + 1, y, 1, 3, b)
+      rect_fill(x, y + 1, 4, 1, b)
+    elif k == "c"
+      rect_fill(x, y, 9, 6, a)
+      rect_fill(x + 2, y + 2, 1, 2, b)
+      pixel(x + 3, y + 1, b)
+      pixel(x + 3, y + 4, b)
+      pixel(x + 4, y + 1, b)
+      pixel(x + 4, y + 4, b)
+      pixel(x + 6, y + 2, b)
+      pixel(x + 6, y + 3, b)
+    elif k == "e"
+      rect_fill(x, y, 9, 6, a)
+      rect_fill(x + 3, y + 2, 3, 2, b)
+    end
+    if size(f) > n rect_fill(x + 2, y + 2, 2, 2, f[n]) end
   end
 end
 
