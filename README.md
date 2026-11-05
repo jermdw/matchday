@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" alt="Matchday" width="552"></p>
+
 # Matchday
 
 A multi-league live score ticker for the **Ulanzi TC002** pixel clock running [AWTRIX NG](https://github.com/Blueforcer/awtrix-ng).
