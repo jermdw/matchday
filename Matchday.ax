@@ -1,9 +1,10 @@
 # @name    Matchday
 # @desc    Today's scores from every league you follow, as a ticker or pages. Hides itself on days with no games.
 # @author  Jeremy Warren
-# @version 1.1
+# @version 1.2
 # @display 52x16
-# @config  leagues  text   "Leagues"        default="soccer/uefa.champions,soccer/uefa.europa,soccer/uefa.europa.conf,soccer/eng.1,soccer/esp.1,soccer/ger.1,soccer/ita.1,soccer/fra.1" maxlen=256 help="ESPN paths, comma separated. Also soccer/usa.1, football/nfl"
+# @config  leagues  text   "Leagues"        default="soccer/uefa.champions,soccer/uefa.europa,soccer/uefa.europa.conf,soccer/eng.1,soccer/esp.1,soccer/ger.1,soccer/ita.1,soccer/fra.1,football/nfl" maxlen=256 help="ESPN paths, comma separated. Also soccer/usa.1, football/college-football"
+# @config  cfb      text   "College football" default="" maxlen=120 help="Conferences or team abbreviations, comma separated, e.g. Big 12, SEC, NOTRE DAME. Empty shows every game."
 # @config  mode     select "Display"        default=ticker options=ticker,pages
 # @config  every    number "Live refresh"   default=45 min=20 max=300 unit=s help="How often each live game is re-read"
 # @config  upcoming bool   "Show upcoming"  default=true
@@ -22,10 +23,11 @@ import string
 class Matchday
   var leagues, ev, date, every, busy, gap, failAt, dirty, due
   var ticker, opts, pieces, pending, rows, page, pageAt, pageMs
-  var live, done, stale, flags, nation
+  var live, done, stale, flags, nation, cfb, skip
 
   def init()
     self.ev = []
+    self.skip = {}
     self.date = 0
     self.every = int(store.get("every"))
     self.busy = false
@@ -61,8 +63,13 @@ class Matchday
         var dot = string.find(lg, ".")
         n = [string.toupper(dot > 0 ? lg[0 .. dot - 1] : lg), 0xC0C0C0]
       end
-      # sport, league, tag, colour, next list read, away team first, European cup
-      self.leagues.push([sport, lg, n[0], n[1], 0, sport != "soccer", string.find(lg, "uefa.") == 0])
+      # sport, league, tag, colour, next list read, away team first, European cup, list cut short at 60 games
+      self.leagues.push([sport, lg, n[0], n[1], 0, sport != "soccer", string.find(lg, "uefa.") == 0, false])
+    end
+    # College football filter: conference names or team abbreviations, matched in capitals.
+    self.cfb = []
+    for w : re.matchall("[A-Z0-9&.'-]([A-Z0-9&.' -]*[A-Z0-9&.'-])?", string.toupper(store.get("cfb")))
+      self.cfb.push(w)
     end
     # 9x6 flags, keyed by the country prefix ESPN puts on a club's slug
     # ("esp.real_madrid"). Kinds: v/h three bands, v2/h2 two, s Spain-style
@@ -145,16 +152,60 @@ class Matchday
       return
     end
     self.failAt = 0
+    l[7] = false
     for m : re.matchall("events/\\d+", b)
-      if size(self.ev) >= 60 break end
+      if size(self.ev) >= 60
+        l[7] = true
+        break
+      end
       var id = m[7 .. size(m) - 1]
-      var seen = false
+      var seen = self.skip.find(id) != nil
       for e : self.ev
         if e[0] == id seen = true break end
       end
       # id, league, first, second, score 1, score 2, state, status, kickoff, read at, postponed,
       # first team id, second team id, first crest, second crest
       if !seen self.ev.push([id, l, "", "", "", "", "", "", 0, 0, false, "", "", "", ""]) end
+    end
+  end
+
+  # Whether a college football game matches the filter, by conference name or either team's
+  # abbreviation as ESPN gives them. Conference names are only on conference games.
+  def cfb_wanted(d)
+    var c = d.find("competitions")[0]
+    var names = []
+    var g = c.find("groups")
+    if g != nil
+      names.push(string.toupper(g.find("name", "")))
+      names.push(string.toupper(g.find("shortName", "")))
+    end
+    for cp : c.find("competitors")
+      names.push(string.toupper(cp.find("team").find("abbreviation", "")))
+    end
+    for w : self.cfb
+      for n : names
+        if n == w return true end
+      end
+    end
+    return false
+  end
+
+  # Forgets a game that is not wanted, for the rest of the day. When the list was cut short
+  # and nothing unread is left, the list is read again straight away for the room this frees.
+  def drop(e)
+    var l = e[1]
+    self.skip[e[0]] = true
+    var keep = []
+    for x : self.ev
+      if x[0] != e[0] keep.push(x) end
+    end
+    self.ev = keep
+    if l[7]
+      var unread = 0
+      for x : self.ev
+        if x[1][1] == l[1] && x[6] == "" unread += 1 end
+      end
+      if unread == 0 l[4] = 0 end
     end
   end
 
@@ -168,6 +219,10 @@ class Matchday
     end
     try
       var d = json.load(b)
+      if e[1][1] == "college-football" && size(self.cfb) > 0 && !self.cfb_wanted(d)
+        self.drop(e)
+        return
+      end
       var ty = d.find("status").find("type")
       var cs = d.find("competitions")[0].find("competitors")
       var h = cs[0]
@@ -299,6 +354,7 @@ class Matchday
         if e[6] == "in" keep.push(e) end
       end
       self.ev = keep
+      self.skip = {}
       for l : self.leagues l[4] = 0 end
       self.dirty = true
     end
@@ -311,7 +367,7 @@ class Matchday
       if l[4] <= t
         l[4] = t + 3600
         self.busy = true
-        http.get("https://sports.core.api.espn.com/v2/sports/" + l[0] + "/leagues/" + l[1] + "/events?limit=50&dates=" + str(self.date),
+        http.get("https://sports.core.api.espn.com/v2/sports/" + l[0] + "/leagues/" + l[1] + "/events?limit=200&dates=" + str(self.date),
                  / b, st -> self.on_list(l, b, st))
         return
       end
