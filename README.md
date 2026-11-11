@@ -4,7 +4,7 @@
 
 A multi-league live score ticker for the **Ulanzi TC002** pixel clock running [AWTRIX NG](https://github.com/Blueforcer/awtrix-ng).
 
-Champions League on Tuesday and Wednesday, Europa and Conference League on Thursday, the Premier League, La Liga, Bundesliga, Serie A and Ligue 1 at the weekend. There's no schedule to set up: Matchday reads today's fixtures for the leagues you follow and removes itself from the clock's rotation when there are no games.
+Champions League on Tuesday and Wednesday, Europa and Conference League on Thursday, the Premier League, La Liga, Bundesliga, Serie A and Ligue 1 at the weekend, and the NFL on Sundays. College football can be added with a filter. There's no schedule to set up: Matchday reads today's fixtures for the leagues you follow and removes itself from the clock's rotation when there are no games.
 
 ![Ticker mode](preview-ticker.png)
 
@@ -30,7 +30,8 @@ Go to the **Apps** tab and click the gear on the Matchday row.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Leagues | UCL, Europa League, Conference League, EPL, La Liga, Bundesliga, Serie A, Ligue 1 | ESPN paths, comma separated |
+| Leagues | UCL, Europa League, Conference League, EPL, La Liga, Bundesliga, Serie A, Ligue 1, NFL | ESPN paths, comma separated |
+| College football | empty (every game) | Conferences or team abbreviations, comma separated, e.g. `Big 12, SEC, NOTRE DAME`. Only used when `football/college-football` is in Leagues. |
 | Display | `ticker` | `ticker` scrolls every game; `pages` shows one at a time |
 | Live refresh | 45 s | How often each live game is re-read |
 | Show upcoming | on | Include games that haven't started |
@@ -75,8 +76,16 @@ The 51 flags, drawn on the panel rather than downloaded:
 | Serie A | `soccer/ita.1` |
 | Ligue 1 | `soccer/fra.1` |
 | MLS | `soccer/usa.1` |
+| NFL | `football/nfl` |
+| College football | `football/college-football` |
 
 Other ESPN league paths also work, and show a short tag taken from the path.
+
+### College football filter
+
+A full college football Saturday can run past the 60 games Matchday reads in a day. Put conference names or team abbreviations in **College football** to keep only those games. A name matches the conference ESPN gives the game, or either team's abbreviation, ignoring case. Games that don't match are dropped for the day and not read again, so they don't count toward the 60.
+
+Leave the setting empty to show every college football game, which is only sensible on a quiet day.
 
 ## How it works
 
@@ -94,9 +103,11 @@ Requests go out one at a time with a gap of at least 2 seconds, so other apps on
 - **"Today" follows the clock's local date.** Games still live at midnight stay on screen until they finish.
 - **TC002 only.** The layout needs the 52×16 panel.
 
-## Roadmap: NFL and college football
+## NFL and college football
 
-US sports already use the same data path, with the away team listed first. Tested so far with live NBA and NHL games. NFL (`football/nfl`) and college football (`football/college-football`) have not yet been tested during a game. A full college football Saturday can also exceed the app's limit of 60 games a day, so it will need a filter by conference or team.
+US sports use the same data path, with the away team listed first. Tested so far with live NBA and NHL games. NFL and college football have been checked against ESPN's data, but not yet on a clock during a live game.
+
+Not yet done: team crests for these leagues (pages mode shows abbreviations), and poll rankings.
 
 ## License
 
